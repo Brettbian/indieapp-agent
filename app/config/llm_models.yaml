@@ -1,0 +1,106 @@
+# LLM Model Configuration
+# This file defines which models to use for different components of the system
+# All components currently use gpt-4.1, but can be changed independently
+
+# Default model configuration (fallback if component not specified)
+default:
+  provider: google_gemini
+  model: gemini-3.1-pro-preview  # Changed from gemini-3-flash-preview for better Google Search support
+  temperature: 0.7
+  max_tokens: null  # null means no limit
+
+# Component-specific model assignments
+#
+# Google Search Grounding:
+#   By default, Google Search is enabled globally for all Gemini components.
+#   The model uses "Dynamic Retrieval" mode - it automatically decides when to search.
+#   To disable Google Search for a specific component, add:
+#     enable_google_search: false
+#
+models:
+  # Router: Determines if request is chat or generation
+  router:
+    provider: google_gemini
+    model: gemini-3.1-pro-preview  # Changed from gemini-3-flash-preview for tool calling stability
+    # enable_google_search: false  # Uncomment to disable search for this component
+
+  # Validator: Checks if generation requests have sufficient context
+  validator:
+    provider: google_gemini
+    model: gemini-3.1-pro-preview  # Changed from gemini-3-flash-preview for tool calling stability
+    # enable_google_search: false  # Uncomment to disable search for this component
+
+  # Generator: Creates webapps, documents, and images
+  generator:
+    provider: google_gemini
+    model: gemini-3.1-pro-preview  # Gemini 3 Pro for generation
+    timeout: 300  # 5 minute timeout to fix 504 DEADLINE_EXCEEDED errors
+
+  # Editor: Modifies existing content
+  editor:
+    provider: google_gemini
+    model: gemini-3.1-pro-preview  # Gemini 3 Pro for editing
+    timeout: 300  # 5 minute timeout to fix 504 DEADLINE_EXCEEDED errors
+
+  # Chat: Q&A and conversational responses
+  chat:
+    provider: google_gemini
+    model: gemini-3.1-pro-preview  # Changed from gemini-3-flash-preview for Google Search Grounding support
+    # No token limit to allow complete responses
+
+  # Image Analyzer: Analyzes images for context
+  image_analyzer:
+    provider: google_gemini
+    model: gemini-3.1-pro-preview  # Gemini 3 Pro for multimodal image analysis
+    temperature: 0.3  # Lower temperature for factual analysis
+    max_tokens: 4096   # Moderate size for descriptions
+
+# Provider-specific parameter examples (uncomment to use):
+# 
+# OpenAI with specific parameters:
+# chat:
+#   provider: openai
+#   model: gpt-4
+#   temperature: 0.8
+#   max_tokens: 2000
+#   top_p: 0.95
+#   frequency_penalty: 0.5
+#   presence_penalty: 0.5
+#   seed: 42  # For reproducible outputs
+#
+# Google Gemini with its specific parameter names:
+# generator:
+#   provider: google_gemini
+#   model: gemini-pro
+#   temperature: 0.9
+#   max_output_tokens: 1000  # Note: Gemini uses max_output_tokens, not max_tokens
+#   top_p: 0.95
+#   top_k: 40
+#   candidate_count: 1
+#
+# Anthropic Claude with specific parameters:
+# chat:
+#   provider: anthropic
+#   model: claude-3-opus-20240229
+#   temperature: 0.7
+#   max_tokens: 4000
+#   top_p: 0.9
+#   top_k: 5
+#
+# Azure OpenAI with deployment-specific settings:
+# router:
+#   provider: azure_openai
+#   model: gpt-35-turbo  # This is the deployment name in Azure
+#   temperature: 0.1
+#   max_tokens: 200
+#   frequency_penalty: 0.0
+#   presence_penalty: 0.0
+#
+# AWS Bedrock with model-specific parameters:
+# generator:
+#   provider: aws_bedrock
+#   model: anthropic.claude-v2
+#   temperature: 0.5
+#   max_tokens: 2048
+#   top_p: 0.9
+#   top_k: 250

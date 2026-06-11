@@ -1,0 +1,211 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ai_backend_redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"  # Only bind to localhost
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ai_backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai_backend_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chat_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_123}
+      POSTGRES_DB: ${POSTGRES_DB:-chat_db}
+    ports:
+      - "127.0.0.1:5432:5432"  # Only bind to localhost
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chat_user} -d ${POSTGRES_DB:-chat_db}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ai_backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  grpc_server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      cache_from:
+        - python:3.11-slim
+    image: ai_backend_grpc:latest
+    container_name: ai_backend_grpc
+    restart: unless-stopped
+    ports:
+      - "50051:50051"
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://chat_user:dev_password_123@postgres:5432/chat_db
+      - PYTHONUNBUFFERED=1
+      - PPT_PROVIDER=${PPT_PROVIDER:-nanobanana}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - ai_backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import grpc; channel=grpc.insecure_channel('localhost:50051'); channel.close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      cache_from:
+        - python:3.11-slim
+    image: ai_backend_worker:latest
+    container_name: ai_backend_worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://chat_user:dev_password_123@postgres:5432/chat_db
+      - PYTHONUNBUFFERED=1
+      - C_FORCE_ROOT=0  # Ensure we're not running as root
+      - PRESENTON_URL=http://presenton:80
+      - PPT_PROVIDER=${PPT_PROVIDER:-nanobanana}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - ai_backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    command: ["worker", "--loglevel=info", "--concurrency=2", "--max-tasks-per-child=1", "--time-limit=3600", "--soft-time-limit=3300"]
+
+  # presenton:
+  #   image: ghcr.io/presenton/presenton:latest
+  #   container_name: ai_backend_presenton
+  #   restart: unless-stopped
+  #   ports:
+  #     - "127.0.0.1:5000:80"  # Only bind to localhost
+  #   environment:
+  #     - LLM=${PRESENTON_LLM:-google}
+  #     - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+  #     - OPENAI_API_KEY=${OPENAI_API_KEY}
+  #     - IMAGE_PROVIDER=${PRESENTON_IMAGE_PROVIDER:-gemini_flash}
+  #     - CAN_CHANGE_KEYS=false
+  #   volumes:
+  #     - presenton_data:/app_data
+  #   networks:
+  #     - ai_backend
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "50m"
+  #       max-file: "3"
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '2'
+  #         memory: 2G
+  #       reservations:
+  #         cpus: '0.5'
+  #         memory: 512M
+
+  # celery_flower:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.worker
+  #   image: ai_backend_worker:latest
+  #   container_name: ai_backend_flower
+  #   restart: unless-stopped
+  #   ports:
+  #     - "127.0.0.1:5555:5555"  # Only bind to localhost
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - REDIS_URL=redis://redis:6379/0
+  #     - PYTHONUNBUFFERED=1
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #     postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - ai_backend
+  #   command: ["flower", "--port=5555", "--basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-admin}"]
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.5'
+  #         memory: 512M
+
+networks:
+  ai_backend:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  redis_data:
+    driver: local
+  postgres_data:
+    driver: local
+  presenton_data:
+    driver: local

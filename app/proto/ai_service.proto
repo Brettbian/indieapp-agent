@@ -1,0 +1,97 @@
+// AiService.proto
+// Defines the gRPC service for all AI-powered features.
+
+syntax = "proto3";
+
+package ai_service;
+
+// Main AI service for the application
+service AiService {
+  // Unified chat endpoint that intelligently handles both Q&A and generation requests.
+  // For Q&A: streams back text response chunks
+  // For generation: streams text intro, then task updates with creation/progress/completion
+  rpc Chat(ChatRequest) returns (stream ChatResponse) {}
+
+  // Asynchronous stream for editing previously generated content.
+  rpc Edit(EditRequest) returns (stream TaskUpdateResponse) {}
+  
+  // Get status of asynchronous generation tasks
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse) {}
+}
+
+// --- Enums and Shared Messages ---
+
+// Represents the lifecycle of an asynchronous task.
+enum TaskStatus {
+  STATUS_UNSPECIFIED = 0;
+  PENDING = 1;         // Task has been created and is awaiting processing.
+  IN_PROGRESS = 2;     // A worker has started processing the task.
+  COMPLETED = 3;       // Task finished successfully.
+  FAILED = 4;          // Task failed during processing.
+}
+
+// Universal message for all async task updates.
+// The server will stream one or more of these messages per task.
+message TaskUpdateResponse {
+  string task_id = 1;
+  string title = 2;  // Human-readable task title
+  TaskStatus status = 3;
+
+  // Populated only when status is 'COMPLETED'. Contains paths to generated files.
+  repeated string output_s3_paths = 4;
+
+  // Populated only when status is 'FAILED'. Contains a description of the error.
+  optional string error_message = 5;
+  
+  // File type for generation tasks (e.g., "webapp", "document", "image")
+  // Populated on initial task creation for generation requests
+  optional string file_type = 6;
+} 
+
+// --- Chat Messages ---
+
+// Attachment object for files/documents
+message Attachment {
+  string path = 1;   // S3 path (required)
+  string type = 2;   // File type (e.g., "image", "document", "markdown", "pdf")
+  string title = 3;  // Display title/filename
+  bool focus = 4;    // Whether the user explicitly selected/highlighted this item
+}
+
+message ChatRequest {
+  string project_id = 1;
+  repeated Attachment attachments = 2; // List of attachments with metadata
+  string user_prompt = 3;  // User's prompt (for both Q&A and generation)
+}
+
+message ChatResponse {
+  oneof response_type {
+    string content_chunk = 1;  // For all text responses (Q&A or generation intro)
+    TaskUpdateResponse task_update = 2;  // For task creation and status updates
+  }
+}
+
+// (GenerateRequest removed - now handled by unified Chat endpoint)
+
+// --- Editing Messages ---
+
+message EditRequest {
+  string s3_folder_path = 1; // S3 path to the folder containing the app (e.g., s3://indieapp-artifact/artifacts/project_id/webapp)
+  string prompt = 2; // User's comments/instructions for editing the PRD and HTML
+}
+
+// --- Status Messages ---
+
+message GetStatusRequest {
+  repeated string task_ids = 1;
+}
+
+message Task {
+  TaskStatus status = 1;
+  string result_uri = 2;  // S3 path on completion
+  string error_message = 3;  // Error details on failure
+}
+
+message GetStatusResponse {
+  map<string, Task> tasks = 1;
+}
