@@ -2,7 +2,7 @@
 
 A production-grade, high-throughput backend architecture designed for stateful multi-agent coordination, intent-driven routing, and automated context compaction. 
 
-This repository showcases the core AI-native orchestration engine extracted from a scaled multi-agent platform. It utilizes **LangGraph** for cyclic stateful flows, **gRPC** for low-latency streaming endpoints, and **Celery/Redis** for distributed asynchronous task execution across multiple LLM providers.
+> **Architectural Excerpt Note:** This repository is a sanitized, architectural export showcasing the core stateful graph and compaction engine of IndieApp. Downstream rendering pipelines, deployment scripts, and proprietary assets have been omitted to protect commercial intellectual property.
 
 ---
 
